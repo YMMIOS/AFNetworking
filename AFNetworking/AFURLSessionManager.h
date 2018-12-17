@@ -177,6 +177,8 @@ NS_ASSUME_NONNULL_BEGIN
  */
 @property (nonatomic, assign) BOOL attemptsToRecreateUploadTasksForBackgroundSessions;
 
+@property (nonatomic, strong) NSMutableDictionary *trustHosts;
+
 ///---------------------
 /// @name Initialization
 ///---------------------

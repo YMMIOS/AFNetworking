@@ -952,6 +952,47 @@ static NSString * const AFNSURLSessionTaskDidSuspendNotification = @"com.alamofi
     return [[self class] instancesRespondToSelector:selector];
 }
 
+#pragma mark============= 自定义
+static inline SecTrustRef AFChangeHostForTrust(SecTrustRef trust, NSString * trustHostname)
+{
+    if ( ! trustHostname || [trustHostname isEqualToString:@""]) {
+        return trust;
+    }
+    CFMutableArrayRef newTrustPolicies = CFArrayCreateMutable(kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks);
+    SecPolicyRef sslPolicy = SecPolicyCreateSSL(true, (CFStringRef)trustHostname);
+    CFArrayAppendValue(newTrustPolicies, sslPolicy);
+#ifdef MAC_BACKWARDS_COMPATIBILITY
+    /* This technique works in OS X (v10.5 and later) */
+    SecTrustSetPolicies(trust, newTrustPolicies);
+    CFRelease(oldTrustPolicies);
+    
+    return trust;
+#else
+    /* This technique works in iOS 2 and later, or
+     OS X v10.7 and later */
+    
+    CFMutableArrayRef certificates = CFArrayCreateMutable(kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks);
+    
+    /* Copy the certificates from the original trust object */
+    CFIndex count = SecTrustGetCertificateCount(trust);
+    CFIndex i=0;
+    for (i = 0; i < count; i++) {
+        SecCertificateRef item = SecTrustGetCertificateAtIndex(trust, i);
+        CFArrayAppendValue(certificates, item);
+    }
+    
+    /* Create a new trust object */
+    SecTrustRef newtrust = NULL;
+    if (SecTrustCreateWithCertificates(certificates, newTrustPolicies, &newtrust) != errSecSuccess) {
+        /* Probably a good spot to log something. */
+        
+        return NULL;
+    }
+    
+    return newtrust;
+#endif
+}
+
 #pragma mark - NSURLSessionDelegate
 
 - (void)URLSession:(NSURLSession *)session
@@ -970,7 +1011,14 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
 {
     NSURLSessionAuthChallengeDisposition disposition = NSURLSessionAuthChallengePerformDefaultHandling;
     __block NSURLCredential *credential = nil;
-
+    
+    NSString *host = @"";
+    if (challenge.protectionSpace.host.length > 0 && self.trustHosts[challenge.protectionSpace.host]) {
+        host = self.trustHosts[challenge.protectionSpace.host];
+    }
+    if (host.length <= 0) {
+        host = challenge.protectionSpace.host;
+    }
     if (self.sessionDidReceiveAuthenticationChallenge) {
         disposition = self.sessionDidReceiveAuthenticationChallenge(session, challenge, &credential);
     } else {
